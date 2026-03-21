@@ -55,6 +55,13 @@ public class AttachCommandTests
       _xmlIo.Received(1).Load(Arg.Any<string>());
       _xmlIo.Received(1).Save(Arg.Any<string>(), Arg.Is(_xmlDoc));
 
+      // Verify HuskyRoot PropertyGroup
+      var huskyRoot = _xmlDoc.Descendants("PropertyGroup")
+         .SelectMany(pg => pg.Descendants("HuskyRoot"))
+         .FirstOrDefault();
+      huskyRoot.Should().NotBeNull();
+      huskyRoot!.Attribute("Condition")?.Value.Should().Be("'$(HuskyRoot)' == ''");
+
       var huskyTarget = _xmlDoc.Descendants("Target")
          .FirstOrDefault(q => q.Attribute("Name")?.Value == "Husky");
       huskyTarget.Should().NotBeNull();
@@ -106,6 +113,27 @@ public class AttachCommandTests
       _xmlDoc.Descendants("Target")
          .SingleOrDefault(q => q.Attribute("Name")?.Value == "Husky")?.Descendants("Exec")
          .Should().NotBeNull().And.HaveCount(2);
+      _xmlIo.Received(1).Save(Arg.Any<string>(), Arg.Any<XElement>());
+   }
+
+   [Fact]
+   public async Task Attach_WhenForceIsTrue_ShouldPreserveOtherPropertiesInPropertyGroup()
+   {
+      // Arrange - HuskyRoot shares a PropertyGroup with another property
+      _console = new FakeInMemoryConsole();
+      _xmlDoc.Add(new XElement("Target", new XAttribute("Name", "Husky")));
+      var sharedPg = new XElement("PropertyGroup",
+         new XElement("SomeOtherProperty", "value"),
+         new XElement("HuskyRoot", "../../"));
+      _xmlDoc.Add(sharedPg);
+      var command = new AttachCommand(_git, _io, _xmlIo) { FileName = _fileName, Force = true };
+
+      // Act
+      await command.ExecuteAsync(_console);
+
+      // Assert - SomeOtherProperty should survive, old HuskyRoot removed, new one added
+      _xmlDoc.Descendants("SomeOtherProperty").Should().HaveCount(1);
+      _xmlDoc.Descendants("HuskyRoot").Should().HaveCount(1);
       _xmlIo.Received(1).Save(Arg.Any<string>(), Arg.Any<XElement>());
    }
 
@@ -177,22 +205,22 @@ public class AttachCommandTests
       // Assert
       _xmlIo.Received(1).Save(Arg.Any<string>(), Arg.Any<XElement>());
 
-      var huskyTarget = _xmlDoc.Descendants("Target")
-         .FirstOrDefault(q => q.Attribute("Name")?.Value == "Husky");
-      huskyTarget.Should().NotBeNull();
+      var expectedHuskyRoot = string.Join("/", relativePath) + "/";
+      var expected = XElement.Parse(
+         $$"""
+         <Project Sdk="Microsoft.NET.Sdk">
+           <PropertyGroup><TargetFramework>netcoreapp2.1</TargetFramework></PropertyGroup>
+           <PropertyGroup><HuskyRoot Condition="'$(HuskyRoot)' == ''">{{expectedHuskyRoot}}</HuskyRoot></PropertyGroup>
+           <Target Name="Husky" AfterTargets="Restore" Condition="'$(HUSKY)' != 0"
+                   Inputs="$(HuskyRoot).config/dotnet-tools.json" Outputs="$(HuskyRoot).husky/_/install.stamp">
+             <Exec Command="dotnet tool restore" StandardOutputImportance="Low" StandardErrorImportance="High" />
+             <Exec Command="dotnet husky install" StandardOutputImportance="Low" StandardErrorImportance="High" WorkingDirectory="$(HuskyRoot)" />
+             <Touch Files="$(HuskyRoot).husky/_/install.stamp" AlwaysCreate="true" Condition="Exists('$(HuskyRoot).husky/_')" />
+             <ItemGroup><FileWrites Include="$(HuskyRoot).husky/_/install.stamp" /></ItemGroup>
+           </Target>
+         </Project>
+         """);
 
-      var rootRelativePath = string.Join(Path.DirectorySeparatorChar, relativePath);
-
-      var exec = huskyTarget!.Descendants("Exec")
-         .FirstOrDefault(q => q.Attribute("Command")?.Value == "dotnet husky install");
-      exec.Should().NotBeNull();
-      exec!.Attribute("WorkingDirectory")?.Value.Should().Be(rootRelativePath);
-
-      var expectedSentinel = Path.Combine(rootRelativePath, ".husky", "_", "install.stamp");
-      var expectedInput = Path.Combine(rootRelativePath, ".config", "dotnet-tools.json");
-      huskyTarget.Attribute("Inputs")?.Value.Should().Be(expectedInput);
-      huskyTarget.Attribute("Outputs")?.Value.Should().Be(expectedSentinel);
-      huskyTarget.Descendants("Touch").First().Attribute("Files")?.Value.Should().Be(expectedSentinel);
-      huskyTarget.Descendants("ItemGroup").Descendants("FileWrites").First().Attribute("Include")?.Value.Should().Be(expectedSentinel);
+      _xmlDoc.ToString().Should().Be(expected.ToString());
    }
 }

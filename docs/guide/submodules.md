@@ -31,19 +31,23 @@ Submodule detected and [--ignore-when-submodule] is set, skipping install target
 
 The `attach` command offers a `--ignore-submodule` options that generates an MsBuild target you can skip by setting the `IgnoreSubmodule` variable to `0` similar to the `Husky` variable, see [Disable husky in CI/CD pipelines](./automate.md#disable-husky-in-ci-cd-pipelines)
 
-The generated block will look something like this, If you're attaching husky manually copy the target to your `.csproj` and adjust `WorkingDirectory` accordingly.
+The generated block will look something like this, If you're attaching husky manually copy the target to your `.csproj` and adjust `HuskyRoot` accordingly.
 
 ```xml:no-line-numbers:no-v-pre
-<Target Name="husky" AfterTargets="Restore" Condition="'$(HUSKY)' != 0  and '$(IgnoreSubmodule)' != 0"
-        Inputs="../../.config/dotnet-tools.json"
-        Outputs="../../.husky/_/install.stamp">
+<PropertyGroup>
+   <!-- Update this to the relative path from your project to the repo root -->
+   <HuskyRoot Condition="'$(HuskyRoot)' == ''">../../</HuskyRoot>
+</PropertyGroup>
+<Target Name="Husky" AfterTargets="Restore" Condition="'$(HUSKY)' != 0  and '$(IgnoreSubmodule)' != 0"
+        Inputs="$(HuskyRoot).config/dotnet-tools.json"
+        Outputs="$(HuskyRoot).husky/_/install.stamp">
    <Exec Command="dotnet tool restore"  StandardOutputImportance="Low" StandardErrorImportance="High"/>
    <Exec Command="dotnet husky install --ignore-submodule" StandardOutputImportance="Low" StandardErrorImportance="High"
-         WorkingDirectory="../../" />  <!--Update this to the relative path to your project root dir -->
-   <Touch Files="../../.husky/_/install.stamp" AlwaysCreate="true"
-          Condition="Exists('../../.husky/_')" />
+         WorkingDirectory="$(HuskyRoot)" />
+   <Touch Files="$(HuskyRoot).husky/_/install.stamp" AlwaysCreate="true"
+          Condition="Exists('$(HuskyRoot).husky/_')" />
    <ItemGroup>
-      <FileWrites Include="../../.husky/_/install.stamp" />
+      <FileWrites Include="$(HuskyRoot).husky/_/install.stamp" />
    </ItemGroup>
 </Target>
 ```

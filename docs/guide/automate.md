@@ -25,22 +25,26 @@ You can set the `HUSKY` environment variable to `0` in order to disable husky in
 To manually attach husky to your project, add the below code to one of your projects (*.csproj/*.vbproj).
 
 ``` xml:no-line-numbers:no-v-pre
-<Target Name="husky" AfterTargets="Restore" Condition="'$(HUSKY)' != 0"
-        Inputs="../../.config/dotnet-tools.json"
-        Outputs="../../.husky/_/install.stamp">
+<PropertyGroup>
+   <!-- Update this to the relative path from your project to the repo root -->
+   <HuskyRoot Condition="'$(HuskyRoot)' == ''">../../</HuskyRoot>
+</PropertyGroup>
+<Target Name="Husky" AfterTargets="Restore" Condition="'$(HUSKY)' != 0"
+        Inputs="$(HuskyRoot).config/dotnet-tools.json"
+        Outputs="$(HuskyRoot).husky/_/install.stamp">
    <Exec Command="dotnet tool restore"  StandardOutputImportance="Low" StandardErrorImportance="High"/>
    <Exec Command="dotnet husky install" StandardOutputImportance="Low" StandardErrorImportance="High"
-         WorkingDirectory="../../" />  <!--Update this to the relative path to your project root dir -->
-   <Touch Files="../../.husky/_/install.stamp" AlwaysCreate="true"
-          Condition="Exists('../../.husky/_')" />
+         WorkingDirectory="$(HuskyRoot)" />
+   <Touch Files="$(HuskyRoot).husky/_/install.stamp" AlwaysCreate="true"
+          Condition="Exists('$(HuskyRoot).husky/_')" />
    <ItemGroup>
-      <FileWrites Include="../../.husky/_/install.stamp" />
+      <FileWrites Include="$(HuskyRoot).husky/_/install.stamp" />
    </ItemGroup>
 </Target>
 ```
 
 ::: tip
-Make sure to update the working directory and the `Inputs`/`Outputs`/`Touch`/`FileWrites` paths depending on your folder structure. All paths should be relative to your project and point to the repository root dir.
+Update the `HuskyRoot` property value to match the relative path from your project to the repository root directory (with a trailing slash). All other paths derive from it automatically.
 :::
 
 ::: tip
@@ -48,7 +52,7 @@ The target uses MSBuild incremental build support (`Inputs`/`Outputs`) to avoid 
 :::
 
 ::: tip
-For solutions with multiple projects, consider placing the target in a `Directory.Build.targets` file at the repository root. When placed at the root, you can replace relative paths (e.g. `../../`) with `$(MSBuildThisFileDirectory)` which resolves to the directory containing the targets file.
+For solutions with multiple projects, consider placing the target in a `Directory.Build.targets` file at the repository root. When placed at the root, set `HuskyRoot` to `$(MSBuildThisFileDirectory)` and all paths resolve automatically with no manual configuration. Do not use `Directory.Build.props` for this; targets belong in `.targets` files.
 :::
 
 ::: warning
@@ -60,7 +64,7 @@ to avoid this, you can add the `$(IsCrossTargetingBuild)' == 'true'` condition t
 e.g
 
 ``` xml:no-line-numbers:no-v-pre
-<Target Name="husky" AfterTargets="Restore" Condition="'$(HUSKY)' != 0 and '$(IsCrossTargetingBuild)' == 'true'">
+<Target Name="Husky" AfterTargets="Restore" Condition="'$(HUSKY)' != 0 and '$(IsCrossTargetingBuild)' == 'true'">
 ...
 ```
 
